@@ -1,0 +1,58 @@
+name: Node.js with PostgreSQL and pnpm Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15 # Or your preferred PostgreSQL version
+        env:
+          POSTGRES_DB: test_database
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }} # Or your preferred Node.js version
+          cache: 'pnpm'
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Wait for PostgreSQL to be ready
+        run: |
+          for i in $(seq 1 10); do
+            nc -z localhost 5432 && break
+            echo "Waiting for PostgreSQL..."
+            sleep 1
+          done
+          pg_isready -h localhost -p 5432 -U test_user -d test_database
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgres://test_user:test_password@localhost:5432/test_database
+        run: pnpm run test
